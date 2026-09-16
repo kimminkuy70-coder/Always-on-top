@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>AlwaysOnTop</AssemblyName>
+    <RootNamespace>AlwaysOnTop</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Version>1.0.0</Version>
+    <Product>Always On Top</Product>
+    <Description>PowerToys Always On Top clone - pin any window on top with a global hotkey.</Description>
+    <!-- Allow "dotnet publish" to produce a single self-contained exe if desired -->
+    <SelfContained>false</SelfContained>
+  </PropertyGroup>
+
+</Project>
