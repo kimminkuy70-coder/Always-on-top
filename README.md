@@ -24,7 +24,17 @@ Microsoft **PowerToys의 "Always On Top" 기능만** 그대로 구현한 가벼�
 - 빌드 시: [.NET 8 SDK](https://dotnet.microsoft.com/download)
   (single-file로 빌드하면 실행 시 .NET 설치가 필요 없습니다.)
 
-## 빌드 & 실행
+## 실행 파일(.exe) 받기
+
+Windows 러너에서 자동으로 빌드된 실행 파일을 바로 받을 수 있습니다 (직접 빌드 불필요).
+
+- **릴리스**: 저장소의 **Releases → "Always On Top (latest build)"** 에서 `AlwaysOnTop.exe` 다운로드
+- **Actions 산출물**: **Actions** 탭 → 최근 "Build Windows EXE" 실행 → Artifacts 의 `AlwaysOnTop-win-x64`
+
+`AlwaysOnTop.exe` 는 self-contained 단일 파일이라 .NET 설치 없이 바로 실행됩니다.
+(빌드는 `.github/workflows/build-exe.yml` 이 `windows-latest` 에서 수행합니다.)
+
+## 직접 빌드 & 실행
 
 ### 방법 A — 스크립트 (권장)
 

@@ -1,0 +1,60 @@
+name: Build Windows EXE
+
+# Builds the Always On Top Windows executable on a GitHub-hosted Windows runner.
+# WinForms can only be compiled on Windows (or with the full Microsoft SDK), so we
+# use `windows-latest`. The resulting self-contained single-file .exe needs no
+# .NET install on the target PC.
+on:
+  push:
+    branches:
+      - claude/powertoys-always-on-top-d9lreb
+    paths:
+      - 'src/**'
+      - '.github/workflows/build-exe.yml'
+  workflow_dispatch: {}   # allow manual runs from the Actions tab
+
+permissions:
+  contents: write          # needed to attach the exe to a Release
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish self-contained single-file exe
+        shell: pwsh
+        run: |
+          dotnet publish src/AlwaysOnTop/AlwaysOnTop.csproj `
+            -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            -o dist
+          Get-ChildItem dist
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AlwaysOnTop-win-x64
+          path: dist/AlwaysOnTop.exe
+          if-no-files-found: error
+
+      - name: Publish Release with the exe attached
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: alwaysontop-latest
+          name: Always On Top (latest build)
+          body: |
+            Always On Top - PowerToys "Always On Top" 기능 클론 (Windows).
+            아래 `AlwaysOnTop.exe` 를 내려받아 실행하세요. (.NET 설치 불필요, 단일 실행 파일)
+            기본 단축키: Win + Ctrl + T
+          files: dist/AlwaysOnTop.exe
+          make_latest: true
