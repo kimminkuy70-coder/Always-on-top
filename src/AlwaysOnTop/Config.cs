@@ -22,8 +22,8 @@ public class Config
     /// <summary>Draw a colored border around pinned windows.</summary>
     public bool ShowBorder { get; set; } = true;
 
-    /// <summary>Border color as an HTML hex string (e.g. "#FF8C00").</summary>
-    public string BorderColor { get; set; } = "#FF8C00";
+    /// <summary>Border color as an HTML hex string (e.g. "#0A84FF").</summary>
+    public string BorderColor { get; set; } = "#0A84FF";
 
     /// <summary>Border thickness in pixels.</summary>
     public int BorderThickness { get; set; } = 4;

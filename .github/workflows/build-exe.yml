@@ -8,6 +8,7 @@ on:
   push:
     branches:
       - claude/powertoys-always-on-top-d9lreb
+      - claude/always-on-top-border-design-82kupw
     paths:
       - 'src/**'
       - '.github/workflows/build-exe.yml'

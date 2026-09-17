@@ -27,7 +27,7 @@ public sealed class TrayApplicationContext : ApplicationContext
 
         _tray = new NotifyIcon
         {
-            Icon = CreateIcon(_config.BorderColor),
+            Icon = CreateIcon(),
             Text = "Always On Top",
             Visible = true,
             ContextMenuStrip = BuildMenu()
@@ -92,8 +92,6 @@ public sealed class TrayApplicationContext : ApplicationContext
                 _config = form.ResultConfig;
                 _config.Save();
                 _windows.UpdateConfig(_config);
-                _tray.Icon?.Dispose();
-                _tray.Icon = CreateIcon(_config.BorderColor);
                 RegisterHotkey(initial: false);
                 RefreshMenu();
             }
@@ -159,30 +157,47 @@ public sealed class TrayApplicationContext : ApplicationContext
     private static string Truncate(string s, int max)
         => s.Length <= max ? s : s.Substring(0, max - 1) + "…";
 
-    /// <summary>Generate a simple tray icon at runtime (no external .ico needed).</summary>
-    private static Icon CreateIcon(string colorHex)
+    /// <summary>
+    /// Generate the brand tray icon at runtime (no external .ico needed): a navy
+    /// rounded tile with a lime "T", matching the app's navy + lime theme.
+    /// </summary>
+    private static Icon CreateIcon()
     {
-        Color color;
-        try { color = ColorTranslator.FromHtml(colorHex); }
-        catch { color = Color.FromArgb(255, 140, 0); }
+        Color navy = Color.FromArgb(0x1B, 0x2A, 0x4A);
+        Color lime = Color.FromArgb(0xCE, 0xE6, 0x4E);
 
         using var bmp = new Bitmap(32, 32);
         using (var g = Graphics.FromImage(bmp))
         {
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
             g.Clear(Color.Transparent);
-            using var fill = new SolidBrush(color);
-            g.FillEllipse(fill, 2, 2, 28, 28);
-            using var ring = new Pen(Color.White, 2);
-            g.DrawEllipse(ring, 2, 2, 28, 28);
-            using var font = new Font("Segoe UI", 15F, FontStyle.Bold, GraphicsUnit.Pixel);
+
+            var tile = new Rectangle(2, 2, 28, 28);
+            using (var path = RoundedTile(tile, 8))
+            using (var fill = new SolidBrush(navy))
+                g.FillPath(fill, path);
+
+            using var font = new Font("Segoe UI Semibold", 16F, FontStyle.Bold, GraphicsUnit.Pixel);
+            using var text = new SolidBrush(lime);
             var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-            g.DrawString("T", font, Brushes.White, new RectangleF(0, 0, 32, 32), sf);
+            g.DrawString("T", font, text, new RectangleF(1, 1, 32, 32), sf);
         }
 
         IntPtr hIcon = bmp.GetHicon();
         // Clone so the icon survives after the temporary HICON is destroyed.
         using var tmp = Icon.FromHandle(hIcon);
         return (Icon)tmp.Clone();
+    }
+
+    private static System.Drawing.Drawing2D.GraphicsPath RoundedTile(Rectangle b, int radius)
+    {
+        var path = new System.Drawing.Drawing2D.GraphicsPath();
+        int d = radius * 2;
+        path.AddArc(b.X, b.Y, d, d, 180, 90);
+        path.AddArc(b.Right - d, b.Y, d, d, 270, 90);
+        path.AddArc(b.Right - d, b.Bottom - d, d, d, 0, 90);
+        path.AddArc(b.X, b.Bottom - d, d, d, 90, 90);
+        path.CloseFigure();
+        return path;
     }
 }

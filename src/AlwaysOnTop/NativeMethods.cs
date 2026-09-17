@@ -35,11 +35,36 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     public static extern bool IsWindow(IntPtr hWnd);
 
+    [DllImport("user32.dll")]
+    public static extern bool IsWindowVisible(IntPtr hWnd);
+
+    /// <summary>True when the window is minimized (iconic).</summary>
+    [DllImport("user32.dll")]
+    public static extern bool IsIconic(IntPtr hWnd);
+
+    /// <summary>Owning process id of a window - used to detect handle recycling.</summary>
+    [DllImport("user32.dll")]
+    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
 
     [DllImport("user32.dll")]
     public static extern int GetWindowTextLength(IntPtr hWnd);
+
+    // ---- DPI / DWM: the *visible* frame bounds for a snug border ------------
+    // GetWindowRect includes the invisible resize borders DWM adds, so a border
+    // drawn from it looks loose. DWMWA_EXTENDED_FRAME_BOUNDS returns the real
+    // visible rectangle, which lets the overlay hug the window exactly.
+    [DllImport("dwmapi.dll")]
+    public static extern int DwmGetWindowAttribute(IntPtr hWnd, int dwAttribute,
+        out RECT pvAttribute, int cbAttribute);
+
+    public const int DWMWA_EXTENDED_FRAME_BOUNDS = 9;
+
+    /// <summary>Per-monitor DPI for a window (Win10 1607+); used to size rounded corners.</summary>
+    [DllImport("user32.dll")]
+    public static extern uint GetDpiForWindow(IntPtr hWnd);
 
     // ---- SetWindowPos (top-most toggle & border positioning) --------------
     [DllImport("user32.dll", SetLastError = true)]
@@ -59,6 +84,13 @@ internal static class NativeMethods
     public const int WS_EX_TRANSPARENT = 0x00000020;
     public const int WS_EX_NOACTIVATE = 0x08000000;
     public const int WS_EX_TOOLWINDOW = 0x00000080;
+
+    // ---- Layered window opacity (render the shaped overlay fully opaque) ----
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool SetLayeredWindowAttributes(IntPtr hWnd, uint crKey,
+        byte bAlpha, uint dwFlags);
+
+    public const uint LWA_ALPHA = 0x02;
 
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT

@@ -13,7 +13,14 @@ namespace AlwaysOnTop;
 /// </summary>
 public sealed class WindowManager : IDisposable
 {
-    private readonly Dictionary<IntPtr, BorderOverlay?> _pinned = new();
+    /// <summary>Tracks a pinned window plus the identity we use to detect it closing.</summary>
+    private sealed class PinnedWindow
+    {
+        public BorderOverlay? Border;
+        public uint ProcessId;
+    }
+
+    private readonly Dictionary<IntPtr, PinnedWindow> _pinned = new();
     private readonly System.Windows.Forms.Timer _timer;
     private Config _config;
 
@@ -69,7 +76,12 @@ public sealed class WindowManager : IDisposable
             border.UpdatePosition();
         }
 
-        _pinned[hwnd] = border;
+        // Remember the owning process so a recycled handle (a new window reusing
+        // this HWND after the pinned one closes) is not mistaken for the same
+        // window - otherwise a stray border could linger.
+        NativeMethods.GetWindowThreadProcessId(hwnd, out uint pid);
+
+        _pinned[hwnd] = new PinnedWindow { Border = border, ProcessId = pid };
 
         if (!_timer.Enabled)
             _timer.Start(); // needed to follow moves and detect closed windows
@@ -83,10 +95,10 @@ public sealed class WindowManager : IDisposable
                 NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE);
         }
 
-        if (_pinned.TryGetValue(hwnd, out BorderOverlay? border) && border != null)
+        if (_pinned.TryGetValue(hwnd, out PinnedWindow? entry) && entry.Border != null)
         {
-            border.Close();
-            border.Dispose();
+            entry.Border.Close();
+            entry.Border.Dispose();
         }
 
         _pinned.Remove(hwnd);
@@ -106,19 +118,39 @@ public sealed class WindowManager : IDisposable
     private void Refresh()
     {
         List<IntPtr>? closed = null;
-        foreach (KeyValuePair<IntPtr, BorderOverlay?> kvp in _pinned)
+        foreach (KeyValuePair<IntPtr, PinnedWindow> kvp in _pinned)
         {
-            if (!NativeMethods.IsWindow(kvp.Key))
+            if (IsGone(kvp.Key, kvp.Value.ProcessId))
             {
                 (closed ??= new List<IntPtr>()).Add(kvp.Key);
                 continue;
             }
-            kvp.Value?.UpdatePosition();
+            kvp.Value.Border?.UpdatePosition();
         }
 
         if (closed != null)
             foreach (IntPtr hwnd in closed)
                 Unpin(hwnd);
+    }
+
+    /// <summary>
+    /// True when the pinned window no longer exists. Besides the plain
+    /// <c>IsWindow</c> check this also catches the case where the process died
+    /// abruptly and Windows handed the same HWND to a different process - which
+    /// otherwise left the border overlay hanging around on screen.
+    /// </summary>
+    private static bool IsGone(IntPtr hwnd, uint originalPid)
+    {
+        if (!NativeMethods.IsWindow(hwnd))
+            return true;
+
+        uint currentPid;
+        uint threadId = NativeMethods.GetWindowThreadProcessId(hwnd, out currentPid);
+        if (threadId == 0 || currentPid == 0)
+            return true;
+
+        // The handle now belongs to a different process => the pinned window is gone.
+        return originalPid != 0 && currentPid != originalPid;
     }
 
     private bool IsExcluded(string title)
@@ -158,7 +190,7 @@ public sealed class WindowManager : IDisposable
     private static Color ParseColor(string hex)
     {
         try { return ColorTranslator.FromHtml(hex); }
-        catch { return Color.FromArgb(255, 140, 0); }
+        catch { return Color.FromArgb(10, 132, 255); } // fall back to blue
     }
 
     public void Dispose()
