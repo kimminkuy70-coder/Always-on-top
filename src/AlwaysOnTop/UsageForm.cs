@@ -136,6 +136,16 @@ public sealed class UsageForm : Form
 
     private void BuildFooter()
     {
+        // Faint, watermark-like developer credit.
+        var credit = new Label
+        {
+            Text = "제작 · 김민규", AutoSize = true,
+            Left = 22, Top = ClientSize.Height - 40,
+            ForeColor = Color.FromArgb(0xC2, 0xC6, 0xBD), BackColor = Theme.Canvas,
+            Font = new Font("Segoe UI", 8.5f, FontStyle.Italic)
+        };
+        Controls.Add(credit);
+
         var close = new PillButton
         {
             Text = "닫기", Width = 110, Height = 40,
