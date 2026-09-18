@@ -1,7 +1,5 @@
 using System;
 using System.Drawing;
-using System.Drawing.Drawing2D;
-using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
@@ -12,20 +10,19 @@ namespace AlwaysOnTop;
 /// hugging a pinned window - the visual cue PowerToys shows around pinned
 /// windows.
 ///
-/// It is a per-pixel-alpha layered window painted with <c>UpdateLayeredWindow</c>:
-///   * The inner area is fully transparent, so the pinned window always shows
-///     through and dragging other windows over the region never leaves the
-///     pinned window's content unpainted (the classic plain-WS_EX_TRANSPARENT
-///     artifact of "content gone, only the border left").
-///   * The frame is an anti-aliased rounded rectangle whose corner radius tracks
-///     the window DPI, matching Windows 11 rounded windows.
+/// The window is a plain solid-color form clipped by <c>SetWindowRgn</c> into a
+/// rounded "ring":
+///   * The interior is a genuine hole (not part of the window), so the pinned
+///     window always shows through, is never covered, and dragging other windows
+///     over it leaves no artifacts.
+///   * The corners are rounded to match Windows 11 windows.
 ///   * It positions itself from <c>DWMWA_EXTENDED_FRAME_BOUNDS</c> (the visible
 ///     frame) so the border hugs the window exactly.
+/// This renders reliably without any layered-window / bitmap complexity.
 /// </summary>
 public sealed class BorderOverlay : Form
 {
     private readonly IntPtr _target;
-    private readonly Color _borderColor;
     private readonly int _thickness;
 
     private int _lastX = int.MinValue, _lastY = int.MinValue;
@@ -34,7 +31,6 @@ public sealed class BorderOverlay : Form
     public BorderOverlay(IntPtr target, Color borderColor, int thickness)
     {
         _target = target;
-        _borderColor = borderColor;
         _thickness = Math.Max(1, thickness);
 
         FormBorderStyle = FormBorderStyle.None;
@@ -43,6 +39,9 @@ public sealed class BorderOverlay : Form
         TopMost = true;
         Enabled = false;                    // never take focus
         AutoScaleMode = AutoScaleMode.None; // work in raw device pixels
+        BackColor = borderColor;            // clipped to the ring by SetWindowRgn
+        DoubleBuffered = true;
+        Size = new Size(1, 1);
     }
 
     protected override CreateParams CreateParams
@@ -50,8 +49,7 @@ public sealed class BorderOverlay : Form
         get
         {
             CreateParams cp = base.CreateParams;
-            cp.ExStyle |= NativeMethods.WS_EX_LAYERED     // required for UpdateLayeredWindow
-                        | NativeMethods.WS_EX_TRANSPARENT // click-through
+            cp.ExStyle |= NativeMethods.WS_EX_TRANSPARENT   // click-through
                         | NativeMethods.WS_EX_NOACTIVATE
                         | NativeMethods.WS_EX_TOOLWINDOW;
             return cp;
@@ -60,10 +58,6 @@ public sealed class BorderOverlay : Form
 
     // Do not activate / steal focus when shown.
     protected override bool ShowWithoutActivation => true;
-
-    // The window content comes entirely from UpdateLayeredWindow.
-    protected override void OnPaintBackground(PaintEventArgs e) { }
-    protected override void OnPaint(PaintEventArgs e) { }
 
     /// <summary>
     /// Re-align the overlay to the current target window rectangle. Hides itself
@@ -95,12 +89,12 @@ public sealed class BorderOverlay : Form
 
         if (w != _lastW || h != _lastH)
         {
-            // Size changed: rebuild the ring bitmap and blit it (also positions).
-            Redraw(x, y, w, h);
+            NativeMethods.SetWindowPos(Handle, NativeMethods.HWND_TOPMOST, x, y, w, h,
+                NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_SHOWWINDOW);
+            ApplyRing(w, h, t);
         }
         else if (x != _lastX || y != _lastY)
         {
-            // Position only: move the layered window; its content is preserved.
             NativeMethods.SetWindowPos(Handle, NativeMethods.HWND_TOPMOST, x, y, 0, 0,
                 NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_SHOWWINDOW);
         }
@@ -115,77 +109,25 @@ public sealed class BorderOverlay : Form
     private void HideOverlay()
     {
         if (Visible) Hide();
-        _lastW = _lastH = -1; // force a redraw when it reappears
+        _lastW = _lastH = -1; // force a re-shape when it reappears
     }
 
     /// <summary>
-    /// Build the ring into a top-down 32bpp DIB section and push it to the window
-    /// via UpdateLayeredWindow.
+    /// Clip the window to a rounded ring: an outer rounded rectangle with the
+    /// inner (window-sized) rounded rectangle subtracted.
     /// </summary>
-    private void Redraw(int x, int y, int w, int h)
+    private void ApplyRing(int w, int h, int t)
     {
-        IntPtr screenDc = NativeMethods.GetDC(IntPtr.Zero);
-        IntPtr memDc = NativeMethods.CreateCompatibleDC(screenDc);
+        int rInner = CornerRadius();
+        int rOuter = rInner + t;
 
-        var bmi = new NativeMethods.BITMAPINFO
-        {
-            bmiHeader = new NativeMethods.BITMAPINFOHEADER
-            {
-                biSize = Marshal.SizeOf<NativeMethods.BITMAPINFOHEADER>(),
-                biWidth = w,
-                biHeight = -h,          // negative => top-down
-                biPlanes = 1,
-                biBitCount = 32,
-                biCompression = (int)NativeMethods.BI_RGB
-            }
-        };
+        IntPtr outer = NativeMethods.CreateRoundRectRgn(0, 0, w, h, 2 * rOuter, 2 * rOuter);
+        IntPtr inner = NativeMethods.CreateRoundRectRgn(t, t, w - t, h - t, 2 * rInner, 2 * rInner);
+        NativeMethods.CombineRgn(outer, outer, inner, NativeMethods.RGN_DIFF);
 
-        IntPtr hDib = NativeMethods.CreateDIBSection(screenDc, ref bmi,
-            NativeMethods.DIB_RGB_COLORS, out IntPtr bits, IntPtr.Zero, 0);
-        IntPtr oldObj = NativeMethods.SelectObject(memDc, hDib);
-        try
-        {
-            // Draw the anti-aliased rounded border straight into the DIB memory.
-            using (var bmp = new Bitmap(w, h, w * 4, PixelFormat.Format32bppArgb, bits))
-            using (var g = Graphics.FromImage(bmp))
-            {
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.Clear(Color.Transparent);
-
-                int t = _thickness;
-                var mid = new Rectangle(t / 2, t / 2, Math.Max(1, w - t), Math.Max(1, h - t));
-                using var path = Theme.RoundedRect(mid, Math.Max(1, CornerRadius() + t / 2));
-                using var pen = new Pen(_borderColor, t)
-                {
-                    Alignment = PenAlignment.Center,
-                    LineJoin = LineJoin.Round
-                };
-                g.DrawPath(pen, path);
-                g.Flush();
-            }
-
-            Premultiply(bits, w, h);
-
-            var ptDst = new NativeMethods.POINT(x, y);
-            var size = new NativeMethods.SIZE(w, h);
-            var ptSrc = new NativeMethods.POINT(0, 0);
-            var blend = new NativeMethods.BLENDFUNCTION
-            {
-                BlendOp = NativeMethods.AC_SRC_OVER,
-                BlendFlags = 0,
-                SourceConstantAlpha = 255,
-                AlphaFormat = NativeMethods.AC_SRC_ALPHA
-            };
-            NativeMethods.UpdateLayeredWindow(Handle, screenDc, ref ptDst, ref size,
-                memDc, ref ptSrc, 0, ref blend, NativeMethods.ULW_ALPHA);
-        }
-        finally
-        {
-            NativeMethods.SelectObject(memDc, oldObj);
-            NativeMethods.DeleteObject(hDib);
-            NativeMethods.DeleteDC(memDc);
-            NativeMethods.ReleaseDC(IntPtr.Zero, screenDc);
-        }
+        // The system takes ownership of 'outer' and frees the previous region.
+        NativeMethods.SetWindowRgn(Handle, outer, true);
+        NativeMethods.DeleteObject(inner);
     }
 
     /// <summary>Prefer the DWM visible frame bounds; fall back to GetWindowRect.</summary>
@@ -199,29 +141,6 @@ public sealed class BorderOverlay : Form
             return true;
 
         return NativeMethods.GetWindowRect(hwnd, out rect);
-    }
-
-    /// <summary>
-    /// Premultiply RGB by alpha in the DIB memory, as UpdateLayeredWindow
-    /// (AC_SRC_ALPHA) expects. Pixels are in B, G, R, A byte order.
-    /// </summary>
-    private static void Premultiply(IntPtr bits, int w, int h)
-    {
-        int count = w * h * 4;
-        byte[] buf = new byte[count];
-        Marshal.Copy(bits, buf, 0, count);
-
-        for (int i = 0; i < count; i += 4)
-        {
-            byte a = buf[i + 3];
-            if (a == 255) continue;
-            if (a == 0) { buf[i] = buf[i + 1] = buf[i + 2] = 0; continue; }
-            buf[i]     = (byte)(buf[i]     * a / 255);
-            buf[i + 1] = (byte)(buf[i + 1] * a / 255);
-            buf[i + 2] = (byte)(buf[i + 2] * a / 255);
-        }
-
-        Marshal.Copy(buf, 0, bits, count);
     }
 
     /// <summary>Corner radius that tracks the window's own rounded corners (~8 DIP).</summary>
