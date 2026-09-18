@@ -52,6 +52,18 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     public static extern int GetWindowTextLength(IntPtr hWnd);
 
+    /// <summary>
+    /// Read a window's extended style flags. Used to check whether a pinned
+    /// window still has WS_EX_TOPMOST so it can be re-asserted if it was lost.
+    /// (GetWindowLongW works on x64 for indices that fit in 32 bits, like
+    /// GWL_EXSTYLE.)
+    /// </summary>
+    [DllImport("user32.dll", SetLastError = true, EntryPoint = "GetWindowLongW")]
+    public static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+
+    public const int GWL_EXSTYLE = -20;
+    public const int WS_EX_TOPMOST = 0x00000008;
+
     // ---- DPI / DWM: the *visible* frame bounds for a snug border ------------
     // GetWindowRect includes the invisible resize borders DWM adds, so a border
     // drawn from it looks loose. DWMWA_EXTENDED_FRAME_BOUNDS returns the real

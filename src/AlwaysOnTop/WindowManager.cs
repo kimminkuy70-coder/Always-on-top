@@ -125,12 +125,33 @@ public sealed class WindowManager : IDisposable
                 (closed ??= new List<IntPtr>()).Add(kvp.Key);
                 continue;
             }
+
+            // Keep the window on top: some apps (e.g. Store/UWP apps) drop their
+            // own top-most flag on certain events, which let a newly opened window
+            // bury the pinned one. Re-assert it whenever we notice it was lost.
+            ReassertTopmost(kvp.Key);
+
             kvp.Value.Border?.UpdatePosition();
         }
 
         if (closed != null)
             foreach (IntPtr hwnd in closed)
                 Unpin(hwnd);
+    }
+
+    /// <summary>
+    /// Re-apply HWND_TOPMOST to a pinned window if it is no longer flagged
+    /// top-most, so it keeps sitting above newly opened (non-topmost) windows.
+    /// Uses SWP_NOACTIVATE so it never steals focus from what the user is doing.
+    /// </summary>
+    private static void ReassertTopmost(IntPtr hwnd)
+    {
+        int exStyle = NativeMethods.GetWindowLong(hwnd, NativeMethods.GWL_EXSTYLE);
+        if ((exStyle & NativeMethods.WS_EX_TOPMOST) != 0)
+            return; // still top-most, nothing to do
+
+        NativeMethods.SetWindowPos(hwnd, NativeMethods.HWND_TOPMOST, 0, 0, 0, 0,
+            NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE);
     }
 
     /// <summary>
