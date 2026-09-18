@@ -120,6 +120,39 @@ internal static class NativeMethods
     [DllImport("gdi32.dll")]
     public static extern bool DeleteObject(IntPtr h);
 
+    // A top-down 32bpp DIB section is the reliable source surface for
+    // UpdateLayeredWindow (GetHbitmap returns a bottom-up DDB that ULW can
+    // render only partially on some setups).
+    [DllImport("gdi32.dll")]
+    public static extern IntPtr CreateDIBSection(IntPtr hdc, ref BITMAPINFO pbmi,
+        uint usage, out IntPtr ppvBits, IntPtr hSection, uint dwOffset);
+
+    public const uint BI_RGB = 0;
+    public const uint DIB_RGB_COLORS = 0;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct BITMAPINFOHEADER
+    {
+        public int biSize;
+        public int biWidth;
+        public int biHeight;
+        public short biPlanes;
+        public short biBitCount;
+        public int biCompression;
+        public int biSizeImage;
+        public int biXPelsPerMeter;
+        public int biYPelsPerMeter;
+        public int biClrUsed;
+        public int biClrImportant;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct BITMAPINFO
+    {
+        public BITMAPINFOHEADER bmiHeader;
+        // No color table needed for a 32bpp BI_RGB DIB.
+    }
+
     [DllImport("user32.dll", SetLastError = true)]
     public static extern bool UpdateLayeredWindow(IntPtr hwnd, IntPtr hdcDst,
         ref POINT pptDst, ref SIZE psize, IntPtr hdcSrc, ref POINT pptSrc,

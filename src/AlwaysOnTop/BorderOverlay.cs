@@ -118,17 +118,54 @@ public sealed class BorderOverlay : Form
         _lastW = _lastH = -1; // force a redraw when it reappears
     }
 
-    /// <summary>Build the ring bitmap and push it to the window via UpdateLayeredWindow.</summary>
+    /// <summary>
+    /// Build the ring into a top-down 32bpp DIB section and push it to the window
+    /// via UpdateLayeredWindow.
+    /// </summary>
     private void Redraw(int x, int y, int w, int h)
     {
-        using Bitmap bmp = BuildRingBitmap(w, h, _thickness, CornerRadius(), _borderColor);
-
         IntPtr screenDc = NativeMethods.GetDC(IntPtr.Zero);
         IntPtr memDc = NativeMethods.CreateCompatibleDC(screenDc);
-        IntPtr hBmp = bmp.GetHbitmap(Color.FromArgb(0));
-        IntPtr oldObj = NativeMethods.SelectObject(memDc, hBmp);
+
+        var bmi = new NativeMethods.BITMAPINFO
+        {
+            bmiHeader = new NativeMethods.BITMAPINFOHEADER
+            {
+                biSize = Marshal.SizeOf<NativeMethods.BITMAPINFOHEADER>(),
+                biWidth = w,
+                biHeight = -h,          // negative => top-down
+                biPlanes = 1,
+                biBitCount = 32,
+                biCompression = (int)NativeMethods.BI_RGB
+            }
+        };
+
+        IntPtr hDib = NativeMethods.CreateDIBSection(screenDc, ref bmi,
+            NativeMethods.DIB_RGB_COLORS, out IntPtr bits, IntPtr.Zero, 0);
+        IntPtr oldObj = NativeMethods.SelectObject(memDc, hDib);
         try
         {
+            // Draw the anti-aliased rounded border straight into the DIB memory.
+            using (var bmp = new Bitmap(w, h, w * 4, PixelFormat.Format32bppArgb, bits))
+            using (var g = Graphics.FromImage(bmp))
+            {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.Clear(Color.Transparent);
+
+                int t = _thickness;
+                var mid = new Rectangle(t / 2, t / 2, Math.Max(1, w - t), Math.Max(1, h - t));
+                using var path = Theme.RoundedRect(mid, Math.Max(1, CornerRadius() + t / 2));
+                using var pen = new Pen(_borderColor, t)
+                {
+                    Alignment = PenAlignment.Center,
+                    LineJoin = LineJoin.Round
+                };
+                g.DrawPath(pen, path);
+                g.Flush();
+            }
+
+            Premultiply(bits, w, h);
+
             var ptDst = new NativeMethods.POINT(x, y);
             var size = new NativeMethods.SIZE(w, h);
             var ptSrc = new NativeMethods.POINT(0, 0);
@@ -145,7 +182,7 @@ public sealed class BorderOverlay : Form
         finally
         {
             NativeMethods.SelectObject(memDc, oldObj);
-            NativeMethods.DeleteObject(hBmp);
+            NativeMethods.DeleteObject(hDib);
             NativeMethods.DeleteDC(memDc);
             NativeMethods.ReleaseDC(IntPtr.Zero, screenDc);
         }
@@ -165,60 +202,26 @@ public sealed class BorderOverlay : Form
     }
 
     /// <summary>
-    /// A 32bpp premultiplied-alpha bitmap holding an anti-aliased rounded border
-    /// stroke; the interior is fully transparent.
+    /// Premultiply RGB by alpha in the DIB memory, as UpdateLayeredWindow
+    /// (AC_SRC_ALPHA) expects. Pixels are in B, G, R, A byte order.
     /// </summary>
-    private static Bitmap BuildRingBitmap(int w, int h, int t, int radius, Color color)
+    private static void Premultiply(IntPtr bits, int w, int h)
     {
-        var bmp = new Bitmap(w, h, PixelFormat.Format32bppArgb);
-        using (var g = Graphics.FromImage(bmp))
-        {
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.Clear(Color.Transparent);
+        int count = w * h * 4;
+        byte[] buf = new byte[count];
+        Marshal.Copy(bits, buf, 0, count);
 
-            // Stroke the mid-line of the frame with a pen of width t so the outer
-            // edge sits at 0 and the inner edge at t.
-            var mid = new Rectangle(t / 2, t / 2, Math.Max(1, w - t), Math.Max(1, h - t));
-            using var path = Theme.RoundedRect(mid, Math.Max(1, radius + t / 2));
-            using var pen = new Pen(color, t)
-            {
-                Alignment = PenAlignment.Center,
-                LineJoin = LineJoin.Round
-            };
-            g.DrawPath(pen, path);
+        for (int i = 0; i < count; i += 4)
+        {
+            byte a = buf[i + 3];
+            if (a == 255) continue;
+            if (a == 0) { buf[i] = buf[i + 1] = buf[i + 2] = 0; continue; }
+            buf[i]     = (byte)(buf[i]     * a / 255);
+            buf[i + 1] = (byte)(buf[i + 1] * a / 255);
+            buf[i + 2] = (byte)(buf[i + 2] * a / 255);
         }
 
-        Premultiply(bmp);
-        return bmp;
-    }
-
-    /// <summary>Premultiply RGB by alpha, as UpdateLayeredWindow (AC_SRC_ALPHA) expects.</summary>
-    private static void Premultiply(Bitmap bmp)
-    {
-        var rect = new Rectangle(0, 0, bmp.Width, bmp.Height);
-        BitmapData data = bmp.LockBits(rect, ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb);
-        try
-        {
-            int bytes = Math.Abs(data.Stride) * bmp.Height;
-            byte[] buf = new byte[bytes];
-            Marshal.Copy(data.Scan0, buf, 0, bytes);
-
-            for (int i = 0; i < bytes; i += 4) // memory order: B, G, R, A
-            {
-                byte a = buf[i + 3];
-                if (a == 255) continue;
-                if (a == 0) { buf[i] = buf[i + 1] = buf[i + 2] = 0; continue; }
-                buf[i]     = (byte)(buf[i]     * a / 255);
-                buf[i + 1] = (byte)(buf[i + 1] * a / 255);
-                buf[i + 2] = (byte)(buf[i + 2] * a / 255);
-            }
-
-            Marshal.Copy(buf, 0, data.Scan0, bytes);
-        }
-        finally
-        {
-            bmp.UnlockBits(data);
-        }
+        Marshal.Copy(buf, 0, bits, count);
     }
 
     /// <summary>Corner radius that tracks the window's own rounded corners (~8 DIP).</summary>
