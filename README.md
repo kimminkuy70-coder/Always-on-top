@@ -104,11 +104,9 @@ src/AlwaysOnTop/
 
 - **고정 방식**: PowerToys와 동일하게 `SetWindowPos` + `HWND_TOPMOST`.
 - **단축키**: PowerToys 기본값 `Win+Ctrl+T` 를 기본으로 사용.
-- **테두리**: `SetWindowRgn` 으로 창을 둥근 "링(ring)" 모양으로 잘라낸 클릭 통과
-  오버레이(`WS_EX_TRANSPARENT`). 안쪽은 실제 "구멍"이라 다른 창을 위로 드래그해도
-  고정 창 내용이 사라지지 않습니다. 위치는
-  `DwmGetWindowAttribute(DWMWA_EXTENDED_FRAME_BOUNDS)` 로 잡아 **창에 딱 맞게**,
-  `CreateRoundRectRgn` 으로 **모서리를 둥글게** 표현합니다.
+- **테두리**: `WS_EX_LAYERED | WS_EX_TRANSPARENT` 클릭 통과 오버레이. 위치는
+  `DwmGetWindowAttribute(DWMWA_EXTENDED_FRAME_BOUNDS)` 로 잡아 **창에 딱 맞게** 그리고,
+  창을 링(ring) 모양 `Region` 으로 만들어 **모서리를 둥글게** 표현합니다.
 - **제외 앱**: 창 제목의 부분 문자열 매칭으로 제외.
 
 ## UI / 디자인

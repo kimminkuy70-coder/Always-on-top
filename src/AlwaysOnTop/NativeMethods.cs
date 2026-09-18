@@ -97,25 +97,12 @@ internal static class NativeMethods
     public const int WS_EX_NOACTIVATE = 0x08000000;
     public const int WS_EX_TOOLWINDOW = 0x00000080;
 
-    [DllImport("gdi32.dll")]
-    public static extern bool DeleteObject(IntPtr h);
+    // ---- Layered window opacity (render the shaped overlay fully opaque) ----
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool SetLayeredWindowAttributes(IntPtr hWnd, uint crKey,
+        byte bAlpha, uint dwFlags);
 
-    // ---- Region-shaped border overlay (rounded ring) -----------------------
-    // The overlay is clipped to a rounded "ring" via SetWindowRgn. This renders
-    // reliably (no layered/bitmap quirks) and the interior is a true hole, so
-    // the pinned window shows through and is never covered.
-    [DllImport("gdi32.dll")]
-    public static extern IntPtr CreateRoundRectRgn(int x1, int y1, int x2, int y2,
-        int nWidthEllipse, int nHeightEllipse);
-
-    [DllImport("gdi32.dll")]
-    public static extern int CombineRgn(IntPtr hrgnDest, IntPtr hrgnSrc1,
-        IntPtr hrgnSrc2, int fnCombineMode);
-
-    [DllImport("user32.dll")]
-    public static extern int SetWindowRgn(IntPtr hWnd, IntPtr hRgn, bool bRedraw);
-
-    public const int RGN_DIFF = 4;
+    public const uint LWA_ALPHA = 0x02;
 
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT
