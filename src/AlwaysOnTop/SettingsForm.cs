@@ -65,7 +65,7 @@ public sealed class SettingsForm : Form
         AutoScaleMode = AutoScaleMode.Dpi;
         BackColor = Theme.Canvas;
         Font = Theme.Body();
-        ClientSize = new Size(660, 640);
+        ClientSize = new Size(660, 684);
 
         BuildUi();
         LoadFrom(current);
@@ -94,7 +94,7 @@ public sealed class SettingsForm : Form
         BuildFeedbackCard(feedback);
 
         // Card 4 - Excluded apps (full width)
-        CardPanel excluded = MakeCard(M, 430, fullW, 128, "제외할 창");
+        CardPanel excluded = MakeCard(M, 430, fullW, 172, "제외할 창");
         BuildExcludedCard(excluded);
 
         BuildFooter(M, gap);
@@ -249,24 +249,31 @@ public sealed class SettingsForm : Form
 
     private void BuildExcludedCard(CardPanel card)
     {
-        var hint = new Label
+        var hint1 = new Label
         {
-            Text = "창 제목의 일부를 한 줄에 하나씩 입력하면 그 창은 고정되지 않습니다.",
+            Text = "단축키를 눌러도 여기 등록한 창은 고정되지 않도록 막아 주는 기능입니다.",
             AutoSize = true, Left = 16, Top = 42,
+            ForeColor = Theme.Ink, BackColor = Theme.Card, Font = Theme.Body(9f)
+        };
+        var hint2 = new Label
+        {
+            Text = "제외할 창 제목의 일부를 한 줄에 하나씩 입력하세요.  예) YouTube, 카카오톡",
+            AutoSize = true, Left = 16, Top = 62,
             ForeColor = Theme.Muted, BackColor = Theme.Card, Font = Theme.Body(8.5f)
         };
-        _txtExcluded.Left = 16; _txtExcluded.Top = 64;
-        _txtExcluded.Width = card.Width - 32; _txtExcluded.Height = card.Height - 78;
+        _txtExcluded.Left = 16; _txtExcluded.Top = 88;
+        _txtExcluded.Width = card.Width - 32; _txtExcluded.Height = card.Height - 102;
         _txtExcluded.BackColor = Color.White; _txtExcluded.ForeColor = Theme.Ink;
         _txtExcluded.Font = Theme.Body();
 
-        card.Controls.Add(hint);
+        card.Controls.Add(hint1);
+        card.Controls.Add(hint2);
         card.Controls.Add(_txtExcluded);
     }
 
     private void BuildFooter(int m, int gap)
     {
-        int y = 430 + 128 + gap; // below the excluded card
+        int y = 430 + 172 + gap; // below the excluded card
         var save = new PillButton
         {
             Text = "저장", Width = 118, Height = 40, Left = ClientSize.Width - m - 118, Top = y,
