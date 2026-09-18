@@ -97,12 +97,62 @@ internal static class NativeMethods
     public const int WS_EX_NOACTIVATE = 0x08000000;
     public const int WS_EX_TOOLWINDOW = 0x00000080;
 
-    // ---- Layered window opacity (render the shaped overlay fully opaque) ----
-    [DllImport("user32.dll", SetLastError = true)]
-    public static extern bool SetLayeredWindowAttributes(IntPtr hWnd, uint crKey,
-        byte bAlpha, uint dwFlags);
+    // ---- Per-pixel-alpha layered overlay (UpdateLayeredWindow) --------------
+    // The border overlay is drawn with UpdateLayeredWindow so DWM composites it
+    // separately: the inner area is fully transparent (the pinned window always
+    // shows through) and dragging other windows over it never leaves the pinned
+    // window's content unpainted - the classic plain-WS_EX_TRANSPARENT artifact.
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetDC(IntPtr hWnd);
 
-    public const uint LWA_ALPHA = 0x02;
+    [DllImport("user32.dll")]
+    public static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
+
+    [DllImport("gdi32.dll")]
+    public static extern IntPtr CreateCompatibleDC(IntPtr hdc);
+
+    [DllImport("gdi32.dll")]
+    public static extern bool DeleteDC(IntPtr hdc);
+
+    [DllImport("gdi32.dll")]
+    public static extern IntPtr SelectObject(IntPtr hdc, IntPtr h);
+
+    [DllImport("gdi32.dll")]
+    public static extern bool DeleteObject(IntPtr h);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool UpdateLayeredWindow(IntPtr hwnd, IntPtr hdcDst,
+        ref POINT pptDst, ref SIZE psize, IntPtr hdcSrc, ref POINT pptSrc,
+        uint crKey, ref BLENDFUNCTION pblend, uint dwFlags);
+
+    public const byte AC_SRC_OVER = 0x00;
+    public const byte AC_SRC_ALPHA = 0x01;
+    public const uint ULW_ALPHA = 0x02;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct POINT
+    {
+        public int X;
+        public int Y;
+        public POINT(int x, int y) { X = x; Y = y; }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct SIZE
+    {
+        public int cx;
+        public int cy;
+        public SIZE(int cx, int cy) { this.cx = cx; this.cy = cy; }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct BLENDFUNCTION
+    {
+        public byte BlendOp;
+        public byte BlendFlags;
+        public byte SourceConstantAlpha;
+        public byte AlphaFormat;
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT
